@@ -86,3 +86,11 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
 
   return app;
 }
+
+// Serverless entry (Vercel picks up src/app's default export): build the app once per instance,
+// then hand each request to Fastify. Locally and in Docker, server.ts calls listen() instead.
+let serverless: Promise<FastifyInstance> | undefined;
+export default async function handler(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) {
+  const app = await (serverless ??= buildApp().then(async a => { await a.ready(); return a; }));
+  app.server.emit('request', req, res);
+}
