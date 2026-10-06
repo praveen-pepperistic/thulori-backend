@@ -144,13 +144,23 @@ Keep the bucket **private**. Add a CORS rule so the website can upload to it:
 [{ "AllowedOrigins": ["https://www.thulori.com"], "AllowedMethods": ["PUT", "GET"], "AllowedHeaders": ["content-type"], "MaxAgeSeconds": 3600 }]
 ```
 
-### 4. AI photo reading: OpenAI
+### 4. AI photo reading: OpenAI or Gemini
 
 ```
 AI_DRIVER=openai
 OPENAI_API_KEY=sk-…
 OPENAI_MODEL=gpt-6-astra      # any vision-capable model on your account
 ```
+
+or, for Google Gemini (key from [Google AI Studio](https://aistudio.google.com/apikey)):
+
+```
+AI_DRIVER=gemini
+GEMINI_API_KEY=…
+GEMINI_MODEL=gemini-2.5-flash  # any vision-capable Gemini model
+```
+
+Gemini can't open the signed storage links, so the worker downloads each photo and sends it inline.
 
 When a customer taps **Read my photos**, the worker does two passes:
 

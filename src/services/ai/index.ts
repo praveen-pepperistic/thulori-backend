@@ -1,6 +1,6 @@
 // Photo reading. Step 1 looks at each photo (in batches) and writes one question per photo;
 // step 2 reads all the descriptions together and writes questions about what recurs.
-// OpenAI Responses API with image input + strict JSON schema output.
+// Drivers: OpenAI (Responses API) or Google Gemini (generateContent), both with image input + JSON schema output.
 import OpenAI from 'openai';
 import { config } from '../../config.js';
 
@@ -60,24 +60,18 @@ const themeSchema = {
   },
 } as const;
 
-class OpenAIReader implements PhotoReader {
-  private client = new OpenAI({ apiKey: config().OPENAI_API_KEY });
-  private async json<T>(input: any, name: string, schema: object): Promise<T> {
-    const res: any = await this.client.responses.create({
-      model: config().OPENAI_MODEL,
-      input,
-      text: { format: { type: 'json_schema', name, strict: true, schema } },
-    } as any);
-    const text: string = res.output_text ?? '';
-    return JSON.parse(text) as T;
-  }
+/** A prompt is a list of text and image parts; each driver turns it into its own API's format. */
+type Part = { text: string } | { image: string };
+
+/** Prompts and result handling shared by the model drivers. */
+abstract class ModelReader implements PhotoReader {
+  protected abstract json<T>(parts: Part[], name: string, schema: object): Promise<T>;
   async describe(child: string, photos: PhotoInput[]) {
-    const content: any[] = [{
-      type: 'input_text',
+    const content: Part[] = [{
       text: `${VOICE}\n\nHere are ${photos.length} family photos of ${child}, in order. For each photo: describe what you see, then write one question for the parent about that moment, with 3 likely answers. Use ${child}'s name.`,
     }];
-    photos.forEach((p, i) => { content.push({ type: 'input_text', text: `Photo ${i + 1}:` }); content.push({ type: 'input_image', image_url: p.image, detail: 'low' }); });
-    const out = await this.json<{ photos: any[] }>([{ role: 'user', content }], 'photo_readings', readingSchema);
+    photos.forEach((p, i) => { content.push({ text: `Photo ${i + 1}:` }); content.push({ image: p.image }); });
+    const out = await this.json<{ photos: any[] }>(content, 'photo_readings', readingSchema);
     return out.photos.map((r, k) => {
       const p = photos[(Number(r.n) || k + 1) - 1] ?? photos[k];
       return p ? { id: p.id, scene: r.scene, people: r.people, things: r.things, place: r.place, occasion: r.occasion, obs: r.obs, q: r.q, options: r.options } : null;
@@ -90,9 +84,50 @@ class OpenAIReader implements PhotoReader {
       `Find only what RECURS across 2 or more photos — the same person, toy, outfit, place or activity — and write one question about each recurring thing (most interesting first, up to ${max}). ` +
       `"photos" lists the ids it appears in; "obs" says what you noticed, e.g. "I noticed ${child} with a little red car in 5 photos." (max 25 words); "q" asks for the story behind it (max 18 words); 3 answer options (max 18 words each); "topic" is 2–4 words.` +
       (skipTopics.length ? ` Skip these topics, already answered: ${skipTopics.join('; ')}.` : '') + ' If nothing truly recurs, return an empty list.';
-    const out = await this.json<{ cards: ThemeCard[] }>([{ role: 'user', content: [{ type: 'input_text', text: prompt }] }], 'recurring_themes', themeSchema);
+    const out = await this.json<{ cards: ThemeCard[] }>([{ text: prompt }], 'recurring_themes', themeSchema);
     const ids = new Set(photos.map(p => p.id));
     return out.cards.map(c => ({ ...c, photos: c.photos.filter(id => ids.has(id)) })).filter(c => c.photos.length >= 2).slice(0, max);
+  }
+}
+
+class OpenAIReader extends ModelReader {
+  private client = new OpenAI({ apiKey: config().OPENAI_API_KEY });
+  protected async json<T>(parts: Part[], name: string, schema: object): Promise<T> {
+    const content = parts.map(p => 'image' in p ? { type: 'input_image', image_url: p.image, detail: 'low' } : { type: 'input_text', text: p.text });
+    const res: any = await this.client.responses.create({
+      model: config().OPENAI_MODEL,
+      input: [{ role: 'user', content }],
+      text: { format: { type: 'json_schema', name, strict: true, schema } },
+    } as any);
+    const text: string = res.output_text ?? '';
+    return JSON.parse(text) as T;
+  }
+}
+
+class GeminiReader extends ModelReader {
+  // Gemini can't fetch our signed storage URLs, so every image goes inline as base64.
+  private async inline(image: string) {
+    const m = /^data:([^;,]+);base64,(.*)$/s.exec(image);
+    if (m) return { inlineData: { mimeType: m[1], data: m[2] } };
+    const r = await fetch(image);
+    if (!r.ok) throw new Error(`Couldn't fetch photo for Gemini: HTTP ${r.status}`);
+    return { inlineData: { mimeType: r.headers.get('content-type')?.split(';')[0] || 'image/jpeg', data: Buffer.from(await r.arrayBuffer()).toString('base64') } };
+  }
+  protected async json<T>(parts: Part[], _name: string, schema: object): Promise<T> {
+    const c = config();
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(c.GEMINI_MODEL)}:generateContent`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': c.GEMINI_API_KEY },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: await Promise.all(parts.map(p => 'image' in p ? this.inline(p.image) : { text: p.text })) }],
+        generationConfig: { responseMimeType: 'application/json', responseJsonSchema: schema, mediaResolution: 'MEDIA_RESOLUTION_LOW' },
+      }),
+    });
+    const body: any = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Gemini ${res.status}: ${body?.error?.message ?? res.statusText}`);
+    const text: string = (body.candidates?.[0]?.content?.parts ?? []).map((p: any) => p.text ?? '').join('');
+    if (!text) throw new Error(`Gemini returned no text (finishReason: ${body.candidates?.[0]?.finishReason ?? body.promptFeedback?.blockReason ?? 'unknown'})`);
+    return JSON.parse(text) as T;
   }
 }
 
@@ -108,5 +143,6 @@ export class MockReader implements PhotoReader {
 }
 
 let instance: PhotoReader | null = null;
-export const photoReader = (): PhotoReader => (instance ??= config().AI_DRIVER === 'openai' ? new OpenAIReader() : new MockReader());
+const readers = { openai: () => new OpenAIReader(), gemini: () => new GeminiReader(), mock: () => new MockReader() };
+export const photoReader = (): PhotoReader => (instance ??= readers[config().AI_DRIVER]());
 export const setPhotoReaderForTests = (r: PhotoReader) => { instance = r; };

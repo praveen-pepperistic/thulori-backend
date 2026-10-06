@@ -56,9 +56,11 @@ const Env = z.object({
   SIGNED_URL_MINUTES: z.coerce.number().int().positive().default(30),
 
   // AI photo reading
-  AI_DRIVER: z.enum(['mock', 'openai']).default('mock'),
+  AI_DRIVER: z.enum(['mock', 'openai', 'gemini']).default('mock'),
   OPENAI_API_KEY: z.string().default(''),
   OPENAI_MODEL: z.string().default('gpt-6-astra'),
+  GEMINI_API_KEY: z.string().default(''),
+  GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
   AI_BATCH_SIZE: z.coerce.number().int().min(1).max(10).default(6),
 
   /** Unpaid orders are closed after this many days. */
@@ -109,6 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     if (c.PAYMENTS_DRIVER === 'cashfree' && (!c.CASHFREE_CLIENT_ID || !c.CASHFREE_CLIENT_SECRET)) missing.push('CASHFREE_CLIENT_ID / CASHFREE_CLIENT_SECRET');
     if (c.STORAGE_DRIVER === 's3' && (!c.S3_BUCKET || !c.S3_ACCESS_KEY_ID)) missing.push('S3_BUCKET / S3_ACCESS_KEY_ID');
     if (c.AI_DRIVER === 'openai' && !c.OPENAI_API_KEY) missing.push('OPENAI_API_KEY');
+    if (c.AI_DRIVER === 'gemini' && !c.GEMINI_API_KEY) missing.push('GEMINI_API_KEY');
     if (missing.length) throw new Error(`Production configuration incomplete: ${missing.join(', ')}`);
   }
   return c;
