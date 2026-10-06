@@ -1,11 +1,11 @@
 # Local stack: PostgreSQL + the API + the worker (photos on a shared local volume).
-#   cp .env.example .env   (fill in what you want to try — everything works with the mock drivers)
+#   uses .env.development (mock drivers — nothing real is sent)
 #   docker compose up --build        → API on http://localhost:8080
-# Serve the website separately (e.g. `python3 -m http.server 5173 -d ../site`) and set
-# apiBase: 'http://localhost:8080' in site/js/config.js. In production use S3 / Cloudflare R2.
+# Serve the website separately (python3 -m http.server 5173 -d ../web/public) after running
+# `sh config-from-env.sh .env.development` in ../web. In production use S3 / Cloudflare R2.
 x-app: &app
   build: .
-  env_file: .env
+  env_file: .env.development   # local stack; production uses .env
   environment:
     DATABASE_URL: postgres://thulori:thulori@db:5432/thulori
     STORAGE_DRIVER: local
