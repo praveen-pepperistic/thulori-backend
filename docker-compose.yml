@@ -1,0 +1,39 @@
+# Local stack: PostgreSQL + the API + the worker (photos on a shared local volume).
+#   cp .env.example .env   (fill in what you want to try — everything works with the mock drivers)
+#   docker compose up --build        → API on http://localhost:8080
+# Serve the website separately (e.g. `python3 -m http.server 5173 -d ../site`) and set
+# apiBase: 'http://localhost:8080' in site/js/config.js. In production use S3 / Cloudflare R2.
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://thulori:thulori@db:5432/thulori
+    STORAGE_DRIVER: local
+    STORAGE_LOCAL_DIR: /data/uploads
+    NODE_ENV: development
+  volumes: [uploads:/data/uploads]
+  depends_on: { db: { condition: service_healthy } }
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: thulori, POSTGRES_PASSWORD: thulori, POSTGRES_DB: thulori }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["5432:5432"]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "thulori"], interval: 3s, retries: 20 }
+
+  api:
+    <<: *app
+    environment:
+      DATABASE_URL: postgres://thulori:thulori@db:5432/thulori
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_DIR: /data/uploads
+      NODE_ENV: development
+      INLINE_WORKER: "false"
+    ports: ["8080:8080"]
+
+  worker:
+    <<: *app
+    command: ["node", "dist/worker.js"]
+
+volumes: { pgdata: {}, uploads: {} }

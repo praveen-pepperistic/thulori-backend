@@ -1,0 +1,9 @@
+process.env.NODE_ENV = 'test';
+process.env.DATABASE_URL ??= 'postgres://thulori@localhost:5433/thulori_test?host=/tmp';
+process.env.SESSION_SECRET = 'test-secret-test-secret-test-secret-123';
+process.env.SITE_URL = 'http://site.test';
+process.env.API_URL = 'http://api.test';
+process.env.STORAGE_LOCAL_DIR = '/tmp/thulori-test-uploads';
+process.env.PAYMENTS_DRIVER = 'mock';
+process.env.AI_DRIVER = 'mock';
+process.env.LOG_LEVEL = 'silent';
