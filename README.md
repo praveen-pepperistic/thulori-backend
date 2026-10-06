@@ -6,8 +6,8 @@ reading (OpenAI), the proof review loop, and email + WhatsApp alerts.
 **Stack:** Node.js 22 · TypeScript · Fastify 5 · PostgreSQL 16 · S3-compatible storage.
 A worker process runs the slow jobs (reading photos, sending messages) from a queue kept in PostgreSQL.
 
-The website in `../site` uses this API when `site/js/config.js` sets `apiBase`. If `apiBase` is
-empty, the site runs as a demo in the browser and never contacts the API.
+The website in `../web` uses this API when `API_BASE` is set in `web/.env` (or the host's environment).
+`web/config-from-env.sh` writes it into `web/public/js/config.js`. If it is empty, the site runs as a demo in the browser and never contacts the API.
 
 ## Run it locally
 
@@ -23,8 +23,9 @@ npm run dev                       # API on http://localhost:8080 (also runs the 
 Serve the website on the `SITE_URL` port, then point it at the API:
 
 ```bash
-python3 -m http.server 5173 -d ../site
-# site/js/config.js →  window.THULORI_CONFIG = { apiBase: 'http://localhost:8080' };
+# in web/.env: API_BASE=http://localhost:8080
+sh ../web/config-from-env.sh
+python3 -m http.server 5173 -d ../web/public
 ```
 
 To create a team (staff) login: `npm run seed:staff -- team@thulori.com "Team Thulori" 'a-long-password'`.
@@ -210,7 +211,7 @@ Recommended setup:
 - **API**: `https://api.thulori.com`.
   - Set `SITE_URL=https://www.thulori.com`, `API_URL=https://api.thulori.com` and `COOKIE_DOMAIN=.thulori.com`.
   - Because the two are on the same site, the session cookie works with `SameSite=Lax`.
-- In `site/js/config.js`, set `apiBase: 'https://api.thulori.com'`.
+- On the web and admin hosts, set the `API_BASE=https://api.thulori.com` environment variable; each build runs `config-from-env.sh`.
 
 ## Security notes
 
