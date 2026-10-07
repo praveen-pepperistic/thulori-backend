@@ -86,7 +86,7 @@ const Env = z.object({
   NOTIFY_EMAIL: z.enum(['log', 'smtp']).default('log'),
   SMTP_URL: z.string().default(''),
   EMAIL_FROM: z.string().default('Thulori <hello@thulori.com>'),
-  NOTIFY_WHATSAPP: z.enum(['log', 'cloud']).default('log'),
+  NOTIFY_WHATSAPP: z.enum(['off', 'log', 'cloud']).default('off'), // off: order updates go by email only
   WA_PHONE_NUMBER_ID: z.string().default(''),
   WA_ACCESS_TOKEN: z.string().default(''),
   WA_GRAPH_VERSION: z.string().default('v23.0'),

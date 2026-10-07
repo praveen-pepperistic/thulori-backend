@@ -1,5 +1,5 @@
 // Customer messages by email (SMTP — works with SES, Zoho, Gmail Workspace, Resend SMTP…)
-// and WhatsApp (Meta WhatsApp Cloud API, approved templates). Sent from the job queue so a
+// and, later, WhatsApp (Meta WhatsApp Cloud API, approved templates; NOTIFY_WHATSAPP=off by default). Sent from the job queue so a
 // slow provider never blocks a request, and failures are retried with back-off.
 import nodemailer from 'nodemailer';
 import { config } from '../../config.js';
@@ -26,7 +26,7 @@ export function render(t: Template, d: Record<string, any>): Rendered {
     };
     case 'stage_update': return {
       subject: `${d.child}’s storybook: ${d.stage}`,
-      text: `Hi ${name},\n\n${d.child}’s storybook has moved to “${d.stage}”.\n\nSee where it is: ${site()}/account.html\n\n— Team Thulori`,
+      text: `Hi ${name},\n\n${d.child}’s storybook has moved to “${d.stage}”.${d.stage === 'Delivered' ? ' We hope it brought a few happy tears!' : ''}\n\nSee where it is: ${site()}/account.html\n\n— Team Thulori`,
       wa: { name: 'stage_update', params: [name, d.child, d.stage] },
     };
     case 'proof_ready': return {
@@ -36,7 +36,7 @@ export function render(t: Template, d: Record<string, any>): Rendered {
     };
     case 'shipped': return {
       subject: `Order ${d.number} is on its way`,
-      text: `Hi ${name},\n\nOrder ${d.number} has shipped with ${d.courier}. Tracking number: ${d.awb}.\n\n— Team Thulori`,
+      text: `Hi ${name},\n\nOrder ${d.number} is on its way with ${d.courier}.\nTracking number: ${d.awb}${d.url ? `\nTrack your parcel: ${d.url}` : ''}\n\nYou can also follow it on your order page: ${site()}/order.html\n\n— Team Thulori`,
       wa: { name: 'order_shipped', params: [name, d.number, d.courier, d.awb] },
     };
     case 'password_reset': return { subject: 'Reset your Thulori password', text: `Hi ${name},\n\nUse this link within 1 hour to choose a new password:\n${site()}/signin.html#reset-${d.token}\n\nIf you didn’t ask for this, ignore this email.\n\n— Team Thulori` };
@@ -101,7 +101,7 @@ export async function deliver(p: { template: Template; userId?: string; orderId?
     try { await sendEmail(email, r.subject, r.text, log); await logSend(p, 'email', email, c.NOTIFY_EMAIL === 'log' || !c.SMTP_URL ? 'logged' : 'sent'); }
     catch (e) { await logSend(p, 'email', email, 'failed', (e as Error).message); throw e; }
   }
-  if (r.wa && phone && wa) {
+  if (r.wa && phone && wa && c.NOTIFY_WHATSAPP !== 'off') {
     try { await sendWhatsApp(phone, r.wa, log); await logSend(p, 'whatsapp', phone, c.NOTIFY_WHATSAPP === 'log' || !c.WA_ACCESS_TOKEN ? 'logged' : 'sent'); }
     catch (e) { await logSend(p, 'whatsapp', phone, 'failed', (e as Error).message); log(`whatsapp failed: ${(e as Error).message}`); } // shown in the admin log; email already went
   }

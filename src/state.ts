@@ -53,7 +53,7 @@ export async function orderState(o: any) {
     subtotal: o.subtotal_paise / 100, tax: o.tax_paise / 100, gstRate: Number(o.gst_rate), total: o.total_paise / 100, refunded: o.refunded_paise / 100,
     invoices: (await q(`SELECT number, issued_on, total_paise, token FROM invoices WHERE order_id = $1 AND status = 'issued' ORDER BY created_at`, [o.id]))
       .map(i => ({ number: i.number, date: i.issued_on, total: i.total_paise / 100, url: `${config().API_URL.replace(/\/$/, '')}/api/invoices/${i.token}` })),
-    shipping: o.shipped_at ? { courier: o.courier, awb: o.awb, at: day(o.shipped_at) } : null,
+    shipping: o.shipped_at ? { courier: o.courier, awb: o.awb, url: o.tracking_url || null, at: day(o.shipped_at), delivered: day(o.delivered_at) } : null,
     payment: { provider: o.payment_provider, sessionId: o.status === 'pending_payment' ? o.payment_session_id : null },
     cancelled: o.cancelled_at ? { at: day(o.cancelled_at), reason: o.cancel_reason } : null,
     // Refunds the customer can follow: in progress → back on your account (with the bank reference) / failed (we'll sort it out).

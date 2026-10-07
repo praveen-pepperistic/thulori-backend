@@ -170,11 +170,13 @@ describe('customer journey', () => {
     expect((await call('POST', `/api/books/${bookId}/proof/approve`, { cookie })).body.book.stage).toBe(4);
 
     const o = await one('SELECT id FROM orders WHERE number = $1', [orderNo]);
-    expect((await call('POST', `/api/admin/orders/${o.id}/ship`, { cookie: staff, body: { courier: 'Blue Dart', awb: 'BD123456' } })).status).toBe(200);
+    expect((await call('POST', `/api/admin/orders/${o.id}/ship`, { cookie: staff, body: { courier: 'Blue Dart', awb: 'BD123456', trackingUrl: 'http://not-https.example' } })).status).toBe(400);
+    expect((await call('POST', `/api/admin/orders/${o.id}/ship`, { cookie: staff, body: { courier: 'Blue Dart', awb: 'BD123456', trackingUrl: 'https://track.example/BD123456' } })).status).toBe(200);
     expect((await call('POST', `/api/admin/orders/${o.id}/deliver`, { cookie: staff })).status).toBe(200);
     const s = (await call('GET', '/api/me/state', { cookie })).body;
     expect(s.books[0].stage).toBe(6);
-    expect(s.orders[0].shipping).toMatchObject({ courier: 'Blue Dart', awb: 'BD123456' });
+    expect(s.orders[0].shipping).toMatchObject({ courier: 'Blue Dart', awb: 'BD123456', url: 'https://track.example/BD123456' });
+    expect(s.orders[0].shipping.delivered).toBeTruthy();
     await work();
     expect(sent).toEqual(expect.arrayContaining(['proof_ready', 'shipped', 'stage_update']));
   });

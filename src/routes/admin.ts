@@ -150,7 +150,7 @@ export async function adminRoutes(app: FastifyInstance) {
         subtotal: o.subtotal_paise / 100, tax: o.tax_paise / 100, gstRate: Number(o.gst_rate), total: o.total_paise / 100, refunded: o.refunded_paise / 100,
         paid: (await paidSoFar(o.id)) / 100, giftNote: o.gift_note,
         address: o.address, contact: o.contact, provider: o.payment_provider, providerOrderId: o.provider_order_id, paymentRef: o.payment_ref,
-        shipping: o.shipped_at ? { courier: o.courier, awb: o.awb, at: o.shipped_at, deliveredAt: o.delivered_at } : null,
+        shipping: o.shipped_at ? { courier: o.courier, awb: o.awb, url: o.tracking_url, at: o.shipped_at, deliveredAt: o.delivered_at } : null,
         cancelledAt: o.cancelled_at, cancelReason: o.cancel_reason,
       },
       customer: u && { id: u.id, name: u.name, email: u.email, phone: u.phone, status: u.status, waUpdates: u.wa_updates, since: u.created_at, hasPassword: u.has_password },
@@ -339,15 +339,15 @@ export async function adminRoutes(app: FastifyInstance) {
   // ---- shipping
   app.post('/orders/:id/ship', async (req) => {
     const o0 = await loadOrder(orderParam(req.params));
-    const { courier, awb, notify, force } = parse(z.object({ courier: z.string().trim().min(2).max(60), awb: z.string().trim().min(4).max(60), notify: z.boolean().default(true), force: z.boolean().default(false) }), req.body);
+    const { courier, awb, trackingUrl, notify, force } = parse(z.object({ courier: z.string().trim().min(2).max(60), awb: z.string().trim().min(4).max(60), trackingUrl: z.string().trim().max(500).regex(/^https:\/\/\S+$/, 'Paste the full tracking link, starting with https://').optional().or(z.literal('').transform(() => undefined)), notify: z.boolean().default(true), force: z.boolean().default(false) }), req.body);
     await tx(async c => {
-      const o = await one(`UPDATE orders SET shipped_at = now(), courier = $2, awb = $3, updated_at = now() WHERE id = $1 AND status = 'paid' RETURNING *`, [o0.id, courier, awb], c);
+      const o = await one(`UPDATE orders SET shipped_at = now(), courier = $2, awb = $3, tracking_url = $4, updated_at = now() WHERE id = $1 AND status = 'paid' RETURNING *`, [o0.id, courier, awb, trackingUrl ?? null], c);
       if (!o) throw conflict('Only paid orders can ship.');
       const notReady = await one(`SELECT child_name FROM books WHERE order_id = $1 AND stage < $2`, [o.id, STAGE.PRINTING], c);
       if (notReady && !force) throw conflict(`${notReady.child_name}’s book hasn’t been approved for printing yet. Approve it first, or ship anyway.`, 'not_approved');
       const books = await q('SELECT * FROM books WHERE order_id = $1', [o.id], c);
       for (const b of books) await q(`UPDATE books SET stage = $2::int, stage_dates = stage_dates || jsonb_build_object(($2::int)::text, $3::text), stage_log = $4 WHERE id = $1`, [b.id, STAGE.SHIPPED, today(), logStage(b, STAGE.SHIPPED, req.admin, `${courier} ${awb}`, false)], c);
-      if (notify) await enqueue('notify', { template: 'shipped', userId: o.user_id, orderId: o.id, data: { number: o.number, courier, awb } }, {}, c);
+      if (notify) await enqueue('notify', { template: 'shipped', userId: o.user_id, orderId: o.id, data: { number: o.number, courier, awb, url: trackingUrl } }, {}, c);
       await audit(me(req), 'admin_ship', { number: o.number, courier, awb }, c);
     });
     return { ok: true };
