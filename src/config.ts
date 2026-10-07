@@ -80,7 +80,7 @@ const Env = z.object({
   COMPANY_STATE: z.string().default('Tamil Nadu'),
   COMPANY_GSTIN: z.string().default(''),
   COMPANY_EMAIL: z.string().default('hello@thulori.com'),
-  COMPANY_PHONE: z.string().default('+91 97893 90456'),
+  COMPANY_PHONE: z.string().default('+91 63694 52925'),
 
   // Notifications
   NOTIFY_EMAIL: z.enum(['log', 'smtp']).default('log'),
