@@ -6,7 +6,7 @@ import { config } from '../../config.js';
 import { one, q } from '../../db.js';
 
 export type Template = 'welcome' | 'order_placed' | 'order_paid' | 'stage_update' | 'proof_ready' | 'shipped' | 'password_reset' | 'account_closed'
-  | 'account_created' | 'invoice' | 'order_cancelled' | 'refund' | 'refund_started' | 'team_alert' | 'admin_code';
+  | 'account_created' | 'invoice' | 'password_changed' | 'email_changed' | 'order_cancelled' | 'refund' | 'refund_started' | 'team_alert' | 'admin_code';
 
 interface Rendered { subject: string; text: string; wa?: { name: string; params: string[] } }
 
@@ -40,6 +40,8 @@ export function render(t: Template, d: Record<string, any>): Rendered {
       wa: { name: 'order_shipped', params: [name, d.number, d.courier, d.awb] },
     };
     case 'password_reset': return { subject: 'Reset your Thulori password', text: `Hi ${name},\n\nUse this link within 1 hour to choose a new password:\n${site()}/signin.html#reset-${d.token}\n\nIf you didn’t ask for this, ignore this email.\n\n— Team Thulori` };
+    case 'password_changed': return { subject: 'Your Thulori password was changed', text: `Hi ${name},\n\nThe password for your Thulori account was just changed, and other devices were signed out.\n\nIf this wasn’t you, reset it now: ${site()}/signin.html — or reply to this email and we’ll help.\n\n— Team Thulori` };
+    case 'email_changed': return { subject: 'Your Thulori sign-in email was changed', text: `Hi ${name},\n\nThe sign-in email for your Thulori account was changed to ${d.newEmail}.\n\nIf this wasn’t you, reply to this email or message us on WhatsApp right away.\n\n— Team Thulori` };
     case 'account_created': return { subject: 'Your Thulori account is ready', text: `Hi ${name},\n\nWe’ve set up your Thulori account for order ${d.number}. Choose a password here (the link works for 7 days):\n${site()}/signin.html#reset-${d.token}\n\nThen you can add photos, answer the questions and review your proof online.\n\n— Team Thulori` };
     case 'invoice': return { subject: `Tax invoice ${d.invoice} — order ${d.number}`, text: `Hi ${name},\n\nYour tax invoice ${d.invoice} for order ${d.number} (${d.total}) is ready:\n${d.url}\n\nOpen it and use Print → Save as PDF to keep a copy.\n\n— Team Thulori` };
     case 'order_cancelled': return { subject: `Order ${d.number} cancelled`, text: `Hi ${name},\n\nOrder ${d.number} has been cancelled.${d.reason ? ' ' + d.reason : ''}\n\nQuestions? Just reply to this email or message us on WhatsApp.\n\n— Team Thulori` };

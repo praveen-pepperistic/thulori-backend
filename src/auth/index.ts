@@ -21,23 +21,24 @@ declare module 'fastify' {
 export const hashPassword = (pw: string) => hash(pw, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
 export const checkPassword = (stored: string | null, pw: string) => stored ? verify(stored, pw).catch(() => false) : Promise.resolve(false);
 
-function cookieOpts(kind: SessionKind = 'customer') {
+function cookieOpts(kind: SessionKind = 'customer', remember = true) {
   const c = config();
   return {
     path: '/', httpOnly: true,
     secure: c.NODE_ENV === 'production' || c.COOKIE_CROSS_SITE,
     sameSite: (c.COOKIE_CROSS_SITE ? 'none' : 'lax') as 'none' | 'lax',
     domain: c.COOKIE_DOMAIN || undefined,
-    maxAge: kind === 'admin' ? c.ADMIN_SESSION_HOURS * 3600 : c.SESSION_DAYS * 86400,
+    // "Keep me signed in" unticked: a browser-session cookie (gone when the browser closes), server-side 1 day max.
+    maxAge: !remember ? undefined : kind === 'admin' ? c.ADMIN_SESSION_HOURS * 3600 : c.SESSION_DAYS * 86400,
   };
 }
 
-export async function startSession(userId: string, req: FastifyRequest, reply: FastifyReply, client?: Queryable, kind: SessionKind = 'customer') {
+export async function startSession(userId: string, req: FastifyRequest, reply: FastifyReply, client?: Queryable, kind: SessionKind = 'customer', remember = true) {
   const token = newToken();
-  const life = kind === 'admin' ? `${config().ADMIN_SESSION_HOURS} hours` : `${config().SESSION_DAYS} days`;
+  const life = kind === 'admin' ? `${config().ADMIN_SESSION_HOURS} hours` : remember ? `${config().SESSION_DAYS} days` : '1 day';
   await q(`INSERT INTO sessions(user_id, token_hash, user_agent, ip, expires_at, kind) VALUES ($1,$2,$3,$4, now() + $5::interval, $6)`,
     [userId, sha256(token), String(req.headers['user-agent'] ?? '').slice(0, 300), req.ip, life, kind], client);
-  reply.setCookie(cookieName(kind), token, cookieOpts(kind));
+  reply.setCookie(cookieName(kind), token, cookieOpts(kind, remember));
 }
 
 export async function endSession(req: FastifyRequest, reply: FastifyReply, kind: SessionKind = 'customer') {

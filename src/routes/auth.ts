@@ -27,14 +27,14 @@ export async function authRoutes(app: FastifyInstance) {
   });
 
   app.post('/login', strict, async (req, reply) => {
-    const b = parse(z.object({ id: z.string().trim().min(3).max(254), password: z.string().min(1).max(200) }), req.body);
+    const b = parse(z.object({ id: z.string().trim().min(3).max(254), password: z.string().min(1).max(200), remember: z.boolean().default(true) }), req.body);
     const id = b.id.toLowerCase();
     const digits = id.replace(/\D/g, '');
     const u = await one(`SELECT * FROM users WHERE status <> 'deleted' AND (email = $1 OR ($2 <> '' AND right(regexp_replace(phone, '\\D', '', 'g'), 10) = right($2, 10))) LIMIT 1`, [id, digits.length >= 10 ? digits : '']);
     if (!u || !(await checkPassword(u.password_hash, b.password))) throw unauthorized('That email/phone and password don’t match.');
     let reactivated = false;
     if (u.status === 'deactivated') { await q(`UPDATE users SET status='active', deactivated_at=NULL, updated_at=now() WHERE id=$1`, [u.id]); reactivated = true; }
-    await startSession(u.id, req, reply);
+    await startSession(u.id, req, reply, undefined, 'customer', b.remember);
     await q(`INSERT INTO audit_log(user_id, action, meta) VALUES ($1,'login',$2)`, [u.id, { reactivated }]);
     return { user: publicUser({ ...u, status: 'active' }), reactivated };
   });
@@ -66,6 +66,7 @@ export async function authRoutes(app: FastifyInstance) {
       await q(`UPDATE users SET password_hash = $2, password_changed_at = now(), status = CASE WHEN status='deactivated' THEN 'active' ELSE status END WHERE id = $1`, [r.user_id, await hashPassword(b.password)], c);
       await revokeSessions(r.user_id, undefined, c);
       await startSession(r.user_id, req, reply, c);
+      await enqueue('notify', { template: 'password_changed', userId: r.user_id }, {}, c);
     });
     return { ok: true };
   });

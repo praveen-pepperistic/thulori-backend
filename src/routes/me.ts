@@ -27,7 +27,12 @@ export async function meRoutes(app: FastifyInstance) {
   app.get('/state', async (req) => accountState(req.user!.id));
 
   app.patch('/', async (req) => {
-    const b = parse(z.object({ name: zName.optional(), email: zEmail.optional(), phone: zPhone.optional(), waUpdates: z.boolean().optional() }), req.body);
+    const b = parse(z.object({ name: zName.optional(), email: zEmail.optional(), phone: zPhone.optional(), waUpdates: z.boolean().optional(), password: z.string().max(200).optional() }), req.body);
+    const cur = await one('SELECT email, password_hash FROM users WHERE id = $1', [req.user!.id]);
+    const emailChange = !!b.email && b.email !== cur.email;
+    // Changing the sign-in email needs the current password, and the old address is told about it.
+    if (emailChange && cur.password_hash && !(b.password && await checkPassword(cur.password_hash, b.password)))
+      throw badRequest('Enter your current password to change your email.', { fields: { password: 'Enter your current password to change your email.' } });
     if (b.email || b.phone) {
       const clash = await one(`SELECT 1 FROM users WHERE id <> $1 AND status <> 'deleted' AND (email = $2 OR phone = $3)`, [req.user!.id, b.email ?? null, b.phone ?? null]);
       if (clash) throw conflict('That email or phone is already used by another account.');
@@ -35,6 +40,7 @@ export async function meRoutes(app: FastifyInstance) {
     await q(`UPDATE users SET name = COALESCE($2, name), email = COALESCE($3, email), phone = COALESCE($4, phone),
                wa_updates = COALESCE($5, wa_updates), updated_at = now() WHERE id = $1`,
       [req.user!.id, b.name ?? null, b.email ?? null, b.phone ?? null, b.waUpdates ?? null]);
+    if (emailChange && cur.email) await enqueue('notify', { template: 'email_changed', userId: req.user!.id, to: { email: cur.email }, data: { newEmail: b.email } });
     return { ok: true };
   });
 
@@ -92,6 +98,7 @@ export async function meRoutes(app: FastifyInstance) {
     }
     await q('UPDATE users SET password_hash = $2, password_changed_at = now(), updated_at = now() WHERE id = $1', [req.user!.id, await hashPassword(b.next)]);
     await revokeSessions(req.user!.id, req.user!.sessionId); // signed out everywhere else
+    await enqueue('notify', { template: 'password_changed', userId: req.user!.id });
     return { ok: true };
   });
 

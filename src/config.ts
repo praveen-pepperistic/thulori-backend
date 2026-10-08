@@ -14,6 +14,9 @@ const Env = z.object({
   PORT: z.coerce.number().int().default(8080),
   HOST: z.string().default('0.0.0.0'),
   LOG_LEVEL: z.string().default('info'),
+  // How many proxies sit in front of the API (Render, Vercel, Cloudflare = 1). Only those hops' X-Forwarded-For
+  // entries are trusted, so visitors can't fake their IP to dodge rate limits. 0 = no proxy.
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
 
   DATABASE_URL: z.string().url(),
   DATABASE_SSL: bool.default(false),

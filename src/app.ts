@@ -26,7 +26,7 @@ export async function buildApp(opts: { logger?: boolean } = {}): Promise<Fastify
   const c = config();
   const app = Fastify({
     logger: opts.logger === false ? false : { level: c.LOG_LEVEL, redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-client-secret"]'] },
-    trustProxy: true,
+    trustProxy: (_addr: string, hop: number) => hop < c.TRUST_PROXY, // trust only our own proxy hop(s)
     bodyLimit: 1_000_000,
     routerOptions: { maxParamLength: 2000 }, // signed storage tokens live in the path
   });
